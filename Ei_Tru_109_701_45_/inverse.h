@@ -3,6 +3,9 @@
 
 #include "poly_r.h"
 #include "poly.h"
+#include<stdbool.h>
+
+typedef int16_t int16;
 
 // Term zero = {0,0};
 
@@ -51,8 +54,18 @@ int Almost_inverse_ZpwCnC3(Term *f,int mod,Term *res);
 #define inverse_zq CRYPTO_NAMESPACE(inverse_zq)
 #define inverse_zw CRYPTO_NAMESPACE(inverse_zw)
 #define powerMod CRYPTO_NAMESPACE(powerMod)
-void inverse_zq(int num,int q, Term* res);
+Term inverse_zq(int num,int q);
 long long powerMod(long long x, long long n, long long mod);
 Term inverse_zw(Term A,Term q);
+
+
+#define checkInverse CRYPTO_NAMESPACE(checkInverse)
+#define newInverseFunction CRYPTO_NAMESPACE(newInverseFunction)
+#define int16_negative_mask CRYPTO_NAMESPACE(int16_negative_mask)
+#define int16_nonzero_mask CRYPTO_NAMESPACE(int16_nonzero_mask)
+bool checkInverse(Term* out, Term* in);
+int newInverseFunction(Term *out,Term *in);
+static int int16_negative_mask(int16 x);
+static int int16_nonzero_mask(Term X);
 
 #endif
