@@ -7,6 +7,8 @@
 
 #include "inverse.h"
 
+
+
 Term zero = {0,0};
 
 int deg(Term *a,int len){
@@ -190,7 +192,7 @@ long long powerMod(long long x, long long n, long long mod)
     return res;
 }
 
-void inverse_zq(int num,int q, Term * res){
+Term inverse_zq(int num,int q){
     long long inv = powerMod(num,q-2,q);
 
     Term INV = {inv,0};
@@ -200,9 +202,12 @@ void inverse_zq(int num,int q, Term * res){
 
     // printf("\n(%d + %d w)\n",INV.a,INV.b);
 
-    red_q_etru(INV,q_,res);
+    Term res;
+
+    res = poly_div_rat(INV,q_);
 
     // printf("\n(%d + %d w)\n",res->a,res->b);
+    return res;
 }
 
 Term inverse_zw(Term A,Term q){
@@ -213,7 +218,7 @@ Term inverse_zw(Term A,Term q){
 
     Term r;
 
-    inverse_zq(temp,q.a,&r);
+    r = inverse_zq(temp,q.a);
 
     Term res_temp;
 
@@ -236,6 +241,187 @@ Term inverse_zw(Term A,Term q){
 
 
 }
+
+//////////// New Almost Inverse Algorithm ////////////////////////
+
+static int int16_nonzero_mask(Term X)
+{
+
+    int16 x = X.a;
+  uint16 u = x; /* 0, else 1...65535 */
+  uint32 v = u; /* 0, else 1...65535 */
+  v = -v; /* 0, else 2^32-65535...2^32-1 */
+  v >>= 31; /* 0, else 1 */
+
+
+    int16 y = X.b;
+    uint16 u_ = y; /* 0, else 1...65535 */
+  uint32 v_ = u_; /* 0, else 1...65535 */
+  v_ = -v_; /* 0, else 2^32-65535...2^32-1 */
+  v_ >>= 31; /* 0, else 1 */
+
+  if(v==0 && v_==0){
+    return 0;
+  }
+  else{
+    return -1;
+  }
+    
+
+//   return -v; /* 0, else -1 */
+}
+
+
+/* return -1 if x<0; otherwise return 0 */
+static int int16_negative_mask(int16 x)
+{
+  uint16 u = x;
+  u >>= 15;
+  return -(int) u;
+  /* alternative with gcc -fwrapv: */
+  /* x>>15 compiles to CPU's arithmetic right shift */
+}
+
+
+int newInverseFunction(Term *out,Term *in)
+{ 
+  Term f[N+1],g[N+1],v[N+1],r[N+1];
+  int i,loop,delta;
+  int swap,t;
+  Term f0,g0;
+  Term scale;
+
+  int sign_a, sign_b,t_a, t_b;
+  Term q_ = {Q,0};
+
+  for (i = 0;i < N+1;++i){ 
+    v[i].a = 0;
+    v[i].b = 0;
+
+    r[i].a = 0;
+    r[i].b = 0;
+  }
+ 
+//   r[0] = Fq_recip(3);
+
+    r[0].a = 1;
+    r[0].b = 0;
+
+
+  for (i = 0;i < N;++i){ 
+    f[i].a = 0;
+    f[i].b = 0;
+
+    // g[i].a = 0;
+    // g[i].b = 0;
+  }
+  f[0].a = 1; 
+  f[0].b = 0;
+  f[N-1].a = -1; 
+  f[N-1].b = 0;
+  f[N].a = -1;
+  f[N].b = 0;
+  for (i = 0;i < N;++i){ 
+    g[N-1-i] = in[i];
+  }
+  g[N].a = 0;
+  g[N].b = 0;
+
+  delta = 1;
+
+  for (loop = 0;loop < 2*N-1;++loop) {
+    for (i = N;i > 0;--i){
+        v[i] = v[i-1];
+    }
+    v[0].a = 0;
+    v[0].b = 0;
+
+
+    
+    swap = int16_negative_mask(-delta) & int16_nonzero_mask(g[0]);
+    delta ^= swap&(delta^-delta);
+    delta += 1;
+
+    for (i = 0;i < N+1;++i) {
+        t_a = swap & (f[i].a ^ g[i].a); f[i].a ^= t_a; g[i].a ^= t_a;
+        t_b = swap & (f[i].b ^ g[i].b); f[i].b ^= t_b; g[i].b ^= t_b;
+        t_a = swap & (v[i].a ^ r[i].a); v[i].a ^= t_a; r[i].a ^= t_a;
+        t_b = swap & (v[i].b ^ r[i].b); v[i].b ^= t_b; r[i].b ^= t_b;
+    }
+
+    f0 = f[0];
+    g0 = g[0];
+    
+    for (i = 0;i < N+1;++i){
+        // Term temp;
+        // temp.a = f0*g[i].a - g0*f[i].a;
+        // temp.b = f0*g[i].b - g0*f[i].b;
+        Term temp1 = multiply_terms(f0,g[i]);
+        Term temp2 = multiply_terms(g0,f[i]);
+
+        Term temp;
+
+        temp.a = temp1.a - temp2.a;
+        temp.b = temp1.b - temp2.b;
+        g[i] = poly_div_rat(temp,q_); // use red_q
+    }
+    for (i = 0;i < N+1;++i){
+        // Term temp;
+        // temp.a = f0*r[i].a - g0*v[i].a;
+        // temp.b = f0*r[i].b - g0*v[i].b;
+        Term temp1 = multiply_terms(f0,r[i]);
+        Term temp2 = multiply_terms(g0,v[i]);
+
+        Term temp;
+        temp.a = temp1.a - temp2.a;
+        temp.b = temp1.b - temp.b;
+        r[i] = poly_div_rat(temp,q_); // use red_q
+    }
+
+    for (i = 0;i < N;++i) g[i] = g[i+1];
+    g[N].a = 0;
+    g[N].b = 0;
+  }
+
+  scale = inverse_zw(f[0],q_);//use find_inverse_new
+  for (i = 0;i < N;++i){
+    Term temp = multiply_terms(scale,v[N-i-1]);
+    out[i] = poly_div_rat(temp,q_); // use red_q
+  }
+
+  Term DELTA = {delta,0};
+
+  return int16_nonzero_mask(DELTA);
+}
+
+bool checkInverse(Term* out, Term* in){
+    Term mul_res[N];
+    Term q_ = {Q,0};
+    poly_Zw_mul_mod_q(out,in,q_,mul_res);
+
+    printf("\nmul: \n");
+
+    for(int i = 0;i<N;i++){
+        printf("(%d + %dw) ",mul_res[i].a,mul_res[i].b);
+    }
+
+    printf("\n");
+
+    if(mul_res[0].a!=1 || mul_res[0].b!=0){
+        return false;
+    }
+
+    for(int i = 1;i<N;i++){
+        if(mul_res[i].a!=0 || mul_res[i].b!=0){
+            return false;
+        }
+    }
+
+    return true;
+}
+
+
+///////////////////////////////////////////////////////////////
 
 void egcd_etru(Term A,Term q,Term* r){
     Term one = {1,0};
@@ -429,10 +615,10 @@ int Almost_inverse_ZpwCn(Term *a, int mod,Term* a_inv,int n){
         // printf("while : %d\n",isSame(poly_div_rat(f[0],q),zero));
         // c_++;
         // printf("Before loop\n");
-        printf("Result of check: %d\n",isSame(poly_div_rat(f[0],q),zero));
+        // printf("Result of check: %d\n",isSame(poly_div_rat(f[0],q),zero));
         while(isSame(poly_div_rat(f[0],q),zero)){
             // printf("\n************************************\n");
-            printf("Inside almost inverse loop\n");
+            // printf("Inside almost inverse loop\n");
             // poly_Zw_print(f,N3+1);
             division_by_x(f,n+1);
             // printf("\n-----------------------------------------------------\n");
@@ -655,17 +841,19 @@ int Almost_inverse_ZpwCnC3(Term *f,int mod,Term *res){
 
     
 
-    found = Almost_inverse_ZpwCn(final,q.a,final_inv,N);
+    // found = Almost_inverse_ZpwCn(final,q.a,final_inv,N); /// inverse function is being called here
+
+    found = newInverseFunction(final_inv,final);
 
     // printf("final_inv: ");poly_Zw_print(final_inv,N);
     // endl
 
     
 
-    if(found==0){
-        printf("Inverse does not exists in CnC3\n");
-        return 0;
-    }
+    // if(found==0){
+    //     printf("Inverse does not exists in CnC3\n");
+    //     return 0;
+    // }
 
     Term a[N];
     Term b[N];
